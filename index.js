@@ -1,19 +1,27 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
+const mysql = require('mysql2/promise');
 
 const app = express();
 const port = 3000;
+
+require('dotenv').config();
 app.use(bodyParser.json());
 
-// Временное хранилище для ссылок (можно заменить на базу данных)
-const urlDatabase = {};
+// Подключение к базе данных
+const db = mysql.createPool({
+  host: process.env.host,
+  user: process.env.user,
+  password: '',
+  database: process.env.db,
+});
 
 function generateShortUrl() {
   return crypto.randomBytes(3).toString('hex');
 }
 
-app.post('/shorten', (req, res) => {
+app.post('/shorten', async (req, res) => {
   const { originalUrl } = req.body;
 
   if (!originalUrl) {
@@ -21,55 +29,80 @@ app.post('/shorten', (req, res) => {
   }
 
   const shortUrl = generateShortUrl();
-  const createdAt = new Date().toISOString();
+  const createdAt = new Date();
 
-  urlDatabase[shortUrl] = {
-    originalUrl,
-    createdAt,
-    clickCount: 0,
-  };
+  try {
+    await db.execute(
+      'INSERT INTO urls (shortUrl, originalUrl, createdAt) VALUES (?, ?, ?)',
+      [shortUrl, originalUrl, createdAt]
+    );
 
-  res.json({ shortUrl });
+    res.json({ shortUrl });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
-app.get('/:shortUrl', (req, res) => {
+app.get('/:shortUrl', async (req, res) => {
   const { shortUrl } = req.params;
-  const urlData = urlDatabase[shortUrl];
 
-  if (!urlData) {
-    return res.status(404).json({ error: 'Ссылка не найдена' });
+  try {
+    const [rows] = await db.execute('SELECT * FROM urls WHERE shortUrl = ?', [shortUrl]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Ссылка не найдена' });
+    }
+
+    const urlData = rows[0];
+
+    await db.execute('UPDATE urls SET clickCount = clickCount + 1 WHERE shortUrl = ?', [shortUrl]);
+
+    res.redirect(urlData.originalUrl);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
-
-  urlData.clickCount += 1;
-
-  res.redirect(urlData.originalUrl);
 });
 
-app.get('/info/:shortUrl', (req, res) => {
+app.get('/info/:shortUrl', async (req, res) => {
   const { shortUrl } = req.params;
-  const urlData = urlDatabase[shortUrl];
 
-  if (!urlData) {
-    return res.status(404).json({ error: 'Ссылка не найдена' });
+  try {
+    const [rows] = await db.execute('SELECT * FROM urls WHERE shortUrl = ?', [shortUrl]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Ссылка не найдена' });
+    }
+
+    const urlData = rows[0];
+
+    res.json({
+      originalUrl: urlData.originalUrl,
+      createdAt: urlData.createdAt,
+      clickCount: urlData.clickCount,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
-
-  res.json({
-    originalUrl: urlData.originalUrl,
-    createdAt: urlData.createdAt,
-    clickCount: urlData.clickCount,
-  });
 });
 
-
-app.delete('/delete/:shortUrl', (req, res) => {
+app.delete('/delete/:shortUrl', async (req, res) => {
   const { shortUrl } = req.params;
 
-  if (!urlDatabase[shortUrl]) {
-    return res.status(404).json({ error: 'Ссылка не найдена' });
-  }
+  try {
+    const [result] = await db.execute('DELETE FROM urls WHERE shortUrl = ?', [shortUrl]);
 
-  delete urlDatabase[shortUrl];
-  res.json({ message: 'Ссылка успешно удалена' });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Ссылка не найдена' });
+    }
+
+    res.json({ message: 'Ссылка успешно удалена' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 app.listen(port, () => {
