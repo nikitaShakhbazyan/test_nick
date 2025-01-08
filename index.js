@@ -27,7 +27,6 @@ app.post('/shorten', async (req, res) => {
       return res.status(400).json({ error: 'Поле originalUrl обязательно' });
     }
   
-    // Проверка на валидность expiresAt (если оно есть)
     const expiresDate = expiresAt ? new Date(expiresAt) : null;
     const shortUrl = generateShortUrl();
     const createdAt = new Date();
@@ -56,7 +55,7 @@ app.get('/shorten/:shortUrl', async (req, res) => {
         return res.status(404).json({ error: 'Ссылка не найдена' });
       }
   
-      res.json(rows[0]);  // Возвращаем данные по найденной ссылке
+      res.json(rows[0]);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Ошибка сервера' });
@@ -66,7 +65,7 @@ app.get('/shorten/:shortUrl', async (req, res) => {
   app.get('/shorten', async (req, res) => {
     try {
       const [rows] = await db.execute('SELECT * FROM urls');
-      res.json(rows);  // Возвращаем все ссылки
+      res.json(rows);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Ошибка сервера' });
