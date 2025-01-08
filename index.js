@@ -9,7 +9,6 @@ const port = 3000;
 require('dotenv').config();
 app.use(bodyParser.json());
 
-// Подключение к базе данных
 const db = mysql.createPool({
   host: process.env.host,
   user: process.env.user,
